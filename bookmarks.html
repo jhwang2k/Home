@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bookmark Bar Index</title>
+<!-- View only. The links live in bookmarks.js beside this file, loaded by
+     the script tag at the foot of the body and written back through the File
+     System Access API. No external resources: a stylesheet in <head> blocks the
+     scripts that follow it, so a webfont request that hangs (a filtering
+     extension, an offline machine, a captive network) would stop this page
+     running at all. System faces only. -->
+<style>
+/* Layout: one reading column with a sticky toolbar. */
+:root {
+  --bg:#f6f8f7; --surface:#ffffff; --fg:#19211f; --muted:#5d6c67; --faint:#8a9893;
+  --accent:#0f6b5c; --accent-soft:#e4efec; --line:#dce3e0; --mark:#ffe9a8;
+  --danger:#a3302a; --danger-soft:#f7e6e4;
+  --display:"Cambria",Georgia,"Times New Roman",serif;
+  --body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,"Courier New",monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#101514; --surface:#171e1c; --fg:#e2e9e6; --muted:#93a39d; --faint:#6d7d77;
+    --accent:#55d2b6; --accent-soft:#15302b; --line:#26322f; --mark:#5a4a16;
+    --danger:#ff9a90; --danger-soft:#3a1f1c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#101514; --surface:#171e1c; --fg:#e2e9e6; --muted:#93a39d; --faint:#6d7d77;
+  --accent:#55d2b6; --accent-soft:#15302b; --line:#26322f; --mark:#5a4a16;
+  --danger:#ff9a90; --danger-soft:#3a1f1c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+/* An id selector can outrank the UA's [hidden] rule, so hiding by property
+   needs this to actually take effect. */
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 940px; margin: 0 auto;
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { padding-block: 30px 16px; }
+h1.page { font: 600 27px/1.2 var(--display); margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { color: var(--muted); font-size: 13.5px; margin: 0; }
+.sub b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+.sub .file { font-family: var(--mono); font-size: 12.5px; }
+#dirty { color: var(--accent); font-weight: 500; }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+       background: var(--bg); border-bottom: 1px solid var(--line); padding-block: 10px; }
+.bar .wrap { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+#q { flex: 1 1 220px; min-width: 0; font: 15px/1.2 var(--body); color: var(--fg);
+     background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; }
+#q::placeholder { color: var(--faint); }
+.btn { font: 500 12.5px/1 var(--body); color: var(--muted); background: var(--surface);
+       border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; cursor: pointer; white-space: nowrap; }
+.btn:hover { color: var(--fg); border-color: var(--faint); }
+.btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+:root[data-theme="dark"] .btn.primary, :root:not([data-theme="light"]) .btn.primary { color: #06100e; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+.btn:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#count { font: 500 12.5px/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.pinned { display: flex; flex-wrap: wrap; gap: 6px; padding-block: 14px 4px; }
+.chipwrap { display: inline-flex; align-items: center; background: var(--accent-soft); border-radius: 999px; }
+.chip { font: 500 13px/1 var(--body); color: var(--fg); text-decoration: none; padding: 7px 4px 7px 13px; }
+.chip:hover { color: var(--accent); }
+.chipwrap .x { border: 0; background: none; color: var(--faint); cursor: pointer;
+               font: 400 14px/1 var(--body); padding: 6px 10px 6px 4px; border-radius: 999px; }
+.chipwrap .x:hover { color: var(--danger); }
+
+section { padding-block: 24px 4px; border-top: 1px solid var(--line); margin-top: 20px; }
+section:first-of-type { border-top: 0; margin-top: 0; }
+.fhead { display: flex; align-items: baseline; gap: 10px; }
+h2 { font: 600 19px/1.25 var(--display); margin: 0; letter-spacing: -0.005em; cursor: pointer; }
+.n { font: 400 12px/1 var(--mono); color: var(--faint); font-variant-numeric: tabular-nums; }
+.tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.fhead:hover .tools, .fhead:focus-within .tools { opacity: 1; }
+.tool { border: 0; background: none; color: var(--faint); cursor: pointer;
+        font: 500 11.5px/1 var(--body); padding: 5px 7px; border-radius: 5px; }
+.tool:hover { color: var(--fg); background: var(--accent-soft); }
+.tool.del:hover { color: var(--danger); background: var(--danger-soft); }
+section.closed .body { display: none; }
+
+h3 { font: 500 11.5px/1 var(--body); text-transform: uppercase; letter-spacing: .09em; color: var(--faint); margin: 0; }
+.subhead { display: flex; align-items: center; gap: 9px; margin: 18px 0 6px; }
+.subhead .tools { opacity: 0; }
+.subhead:hover .tools, .subhead:focus-within .tools { opacity: 1; }
+.sub-group { border-left: 2px solid var(--line); padding-left: 14px; margin-top: 4px; }
+
+ul { list-style: none; margin: 6px 0 0; padding: 0; }
+li { border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 4px; }
+li:last-child { border-bottom: 0; }
+a.row { flex: 1 1 auto; min-width: 0; display: flex; gap: 12px; align-items: baseline;
+        padding: 7px 2px; text-decoration: none; color: inherit; }
+a.row:hover { background: var(--accent-soft); }
+.t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+a.row:hover .t { color: var(--accent); }
+.host { flex: 0 0 auto; font: 400 11.5px/1.4 var(--mono); color: var(--faint);
+        max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li .tools { opacity: 0; }
+li:hover .tools, li:focus-within .tools { opacity: 1; }
+mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+.empty { color: var(--muted); padding: 40px 0; text-align: center; }
+/* Shown only when the data file did not load: the one state worth explaining. */
+.notice { margin: 34px 0; padding: 20px 22px; border: 1px solid var(--line);
+          border-left: 3px solid var(--danger); border-radius: 10px; background: var(--surface); }
+.notice h2 { font-size: 17px; cursor: default; margin: 0 0 8px; }
+.notice p { color: var(--muted); font-size: 13.5px; margin: 0 0 10px; }
+.notice code { font: 400 12.5px var(--mono); color: var(--fg); }
+footer { color: var(--faint); font-size: 12.5px; padding-block: 30px 44px; margin-top: 24px; border-top: 1px solid var(--line); }
+footer p { margin: 0 0 7px; }
+footer b { color: var(--fg); font-weight: 500; }
+
+dialog { border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--fg);
+         padding: 0; width: min(440px, calc(100vw - 32px)); box-shadow: 0 16px 48px rgba(0,0,0,.22); }
+dialog::backdrop { background: rgba(10,16,15,.44); }
+dialog form { padding: 20px; display: flex; flex-direction: column; gap: 13px; }
+dialog h4 { font: 600 17px/1.2 var(--display); margin: 0; }
+label { display: flex; flex-direction: column; gap: 5px; font: 500 11.5px/1 var(--body);
+        text-transform: uppercase; letter-spacing: .08em; color: var(--faint); }
+label input, label select { font: 15px/1.2 var(--body); color: var(--fg); background: var(--bg);
+        border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; text-transform: none; letter-spacing: 0; }
+.drow { display: flex; gap: 7px; justify-content: flex-end; margin-top: 3px; }
+.msg { font: 400 13px/1.45 var(--body); color: var(--muted); text-transform: none; letter-spacing: 0; }
+.msg b { color: var(--fg); font-weight: 500; }
+
+#toast { position: fixed; left: 50%; transform: translateX(-50%);
+         bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+         background: var(--fg); color: var(--bg); border-radius: 9px; padding: 11px 15px;
+         font: 500 13px/1 var(--body); display: flex; align-items: center; gap: 13px;
+         box-shadow: 0 10px 30px rgba(0,0,0,.26); max-width: calc(100vw - 32px); }
+#toast button { border: 0; background: none; color: var(--bg); text-decoration: underline;
+                cursor: pointer; font: 500 13px/1 var(--body); padding: 0; }
+
+@media (max-width: 560px) { .host { display: none; } h1.page { font-size: 23px; } .tools { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="top"><div class="wrap">
+    <h1 class="page">Bookmark Bar Index</h1>
+    <p class="sub"><b id="total">0</b> links in <b id="folders">0</b> folders &middot;
+       <span class="file" id="file-name"></span> &middot;
+       saved <span id="when"></span><span id="dirty" hidden></span></p>
+  </div></header>
+
+  <div class="bar"><div class="wrap">
+    <input id="q" type="search" placeholder="Filter by title, address or folder&hellip;" autocomplete="off" spellcheck="false">
+    <span id="count"></span>
+    <button class="btn" id="add-link" type="button">+ Link</button>
+    <button class="btn" id="add-folder" type="button">+ Folder</button>
+    <button class="btn" id="toggle-all" type="button">Collapse all</button>
+    <button class="btn" id="save" type="button">Save</button>
+    <button class="btn" id="open-other" type="button">Open&hellip;</button>
+    <button class="btn" id="revert" type="button">Revert</button>
+    <button class="btn" id="theme" type="button">Theme</button>
+  </div></div>
+
+  <main class="wrap" id="out"></main>
+
+  <footer class="wrap">
+    <p id="foot-file"></p>
+    <p>Edits are held in the page as you go. <b>Save</b> (or <b>Ctrl+S</b>) writes them straight back
+       into the data file &mdash; nothing is downloaded and this page is never rewritten.</p>
+    <p>Press <b>/</b> to filter, <b>Esc</b> to clear. Links open in a new tab.</p>
+  </footer>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="dlg-form">
+  <h4 id="dlg-title">Edit</h4>
+  <div id="dlg-fields"></div>
+  <div class="drow">
+    <button class="btn" value="cancel" type="submit">Cancel</button>
+    <button class="btn primary" value="ok" type="submit" id="dlg-ok">Save</button>
+  </div>
+</form></dialog>
+
+<input id="plain-file" type="file" accept=".js,.json,application/json,text/javascript" hidden>
+
+<!-- The data, as a plain script. A script tag is the one way a file:// page may
+     read a neighbouring file with no picker and no permission, so the links are
+     on screen the moment the page opens. Writing them back still needs the File
+     System Access API, and that is asked for once, at the first Save. -->
+<script src="bookmarks.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var DATA_FILE = 'bookmarks.js';
+  var PICKER_TYPES = [{ description: 'Bookmark data',
+                        accept: { 'text/javascript': ['.js'], 'application/json': ['.json'] } }];
+  var IDB_NAME = 'bookmark-index', IDB_STORE = 'handles';
+  var IDB_KEY = 'write-target:' + DATA_FILE;   // never reuse a handle stored for another file
+  var HAS_FSA = !!window.showOpenFilePicker;
+
+  var out, dlg;
+  var state = null;                        // { tree, generated }
+  var handle = null;                       // write target, once granted
+  var fileName = DATA_FILE;
+  var pristine = null;                     // the data as it loaded, for Revert
+  var seq = 0, dirty = false, toastTimer = null;
+
+  function wait(ms, value) {
+    return new Promise(function (resolve) { setTimeout(function () { resolve(value); }, ms); });
+  }
+
+  // ---------- the handle store -------------------------------------------
+  // A FileSystemFileHandle cannot be stringified, so remembering the write
+  // target across reloads means IndexedDB. On a file:// origin an open can
+  // hang rather than fail, so every call here has a deadline and fails soft:
+  // the cost is being asked for the file once more.
+  function store(mode) {
+    var open = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) return reject(new Error('no indexedDB'));
+      var rq = indexedDB.open(IDB_NAME, 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore(IDB_STORE); };
+      rq.onerror = function () { reject(rq.error || new Error('indexedDB blocked')); };
+      rq.onsuccess = function () {
+        try { resolve(rq.result.transaction(IDB_STORE, mode).objectStore(IDB_STORE)); }
+        catch (e) { reject(e); }
+      };
+    });
+    return Promise.race([open, wait(1500).then(function () { throw new Error('indexedDB timed out'); })]);
+  }
+  async function remember(h) {
+    try { (await store('readwrite')).put(h, IDB_KEY); } catch (e) { /* ask again next time */ }
+  }
+  async function recall() {
+    try {
+      var s = await store('readonly');
+      return await new Promise(function (resolve) {
+        var r = s.get(IDB_KEY);
+        r.onsuccess = function () { resolve(r.result || null); };
+        r.onerror = function () { resolve(null); };
+      });
+    } catch (e) { return null; }
+  }
+  async function forget() {
+    try { (await store('readwrite')).delete(IDB_KEY); } catch (e) {}
+  }
+
+  // requestPermission needs a click behind it; queryPermission does not. Which
+  // one is safe to call is the whole difference between a silent page load and
+  // a prompt the browser would refuse anyway.
+  async function granted(h, mode) {
+    try { return (await h.queryPermission({ mode: mode })) === 'granted'; } catch (e) { return false; }
+  }
+  async function allow(h, mode) {
+    var opts = { mode: mode };
+    try {
+      if ((await h.queryPermission(opts)) === 'granted') return true;
+      return (await h.requestPermission(opts)) === 'granted';
+    } catch (e) { return false; }
+  }
+
+  // ---------- model -------------------------------------------------------
+  function decorate(items) {
+    items.forEach(function (n) { n._id = 'n' + (++seq); if (n.c) decorate(n.c); });
+  }
+  function strip(items) {
+    return items.map(function (n) {
+      return n.c ? { t: n.t, c: strip(n.c) } : { t: n.t, u: n.u, d: n.d };
+    });
+  }
+  function normalize(p) {
+    var tree = Array.isArray(p) ? p : (p && p.tree);
+    if (!Array.isArray(tree)) throw new Error('that file has no "tree" array in it');
+    return { tree: tree, generated: (p && p.generated) || 'never' };
+  }
+  // Reads both shapes: the data file's `window.BOOKMARKS = {...};` and bare
+  // JSON, so an older .json still opens through the picker.
+  function parseText(text) {
+    var a = text.indexOf('{'), b = text.lastIndexOf('}');
+    if (a === -1 || b < a) throw new Error('no data object found in that file');
+    return normalize(JSON.parse(text.slice(a, b + 1)));
+  }
+  function serialize() {
+    return '// Bookmark Bar Index - data file. Written by bookmarks.html; safe to edit by hand.\n' +
+           'window.BOOKMARKS =\n' +
+           JSON.stringify({ generated: state.generated, tree: strip(state.tree) }, null, 2) + ';\n';
+  }
+
+  function byId(id, items, parent) {
+    items = items || state.tree;
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i];
+      if (n._id === id) return { node: n, list: items, index: i, parent: parent || null };
+      if (n.c) { var hit = byId(id, n.c, n); if (hit) return hit; }
+    }
+    return null;
+  }
+  function folders(items, depth, acc, skipId) {
+    items = items || state.tree; acc = acc || [{ id: 'root', label: 'Bookmarks bar' }];
+    items.forEach(function (n) {
+      if (!n.c || n._id === skipId) return;
+      acc.push({ id: n._id, label: new Array((depth || 0) + 2).join('  ') + n.t });
+      folders(n.c, (depth || 0) + 1, acc, skipId);
+    });
+    return acc;
+  }
+  function listOf(id) { if (id === 'root') return state.tree; var h = byId(id); return h && h.node.c ? h.node.c : state.tree; }
+  function countLinks(items) { return items.reduce(function (a, i) { return a + (i.c ? countLinks(i.c) : 1); }, 0); }
+  function total() { return countLinks(state.tree); }
+
+  // Edits live in the page until Save writes them to the file. The marker and
+  // the unload guard are what stand between an edit and losing it.
+  function touch() {
+    dirty = true;
+    var d = document.getElementById('dirty');
+    d.hidden = false; d.textContent = ' · edited, not yet saved';
+  }
+  function settle(stamp) {
+    dirty = false;
+    document.getElementById('dirty').hidden = true;
+    if (stamp) document.getElementById('when').textContent = stamp;
+  }
+
+  // ---------- helpers -----------------------------------------------------
+  function host(u) {
+    try { var h = new URL(u).hostname.replace(/^www\./, ''); return h || String(u).split(':')[0]; }
+    catch (e) { return String(u).slice(0, 24); }
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function hl(text, needle) {
+    var safe = esc(text);
+    if (!needle) return safe;
+    var low = safe.toLowerCase(), i = low.indexOf(needle), n = needle.length, res = '', from = 0;
+    while (i !== -1) { res += safe.slice(from, i) + '<mark>' + safe.slice(i, i + n) + '</mark>'; from = i + n; i = low.indexOf(needle, from); }
+    return res + safe.slice(from);
+  }
+  function tools(id, kind) {
+    return '<span class="tools">' +
+      (kind === 'folder' ? '<button class="tool" data-act="addin" data-id="' + id + '" title="Add a link in here">+ link</button>' : '') +
+      '<button class="tool" data-act="edit" data-id="' + id + '">edit</button>' +
+      '<button class="tool del" data-act="del" data-id="' + id + '">delete</button></span>';
+  }
+  function toast(text, undoFn) {
+    var old = document.getElementById('toast');
+    if (old) old.remove();
+    clearTimeout(toastTimer);
+    var el = document.createElement('div');
+    el.id = 'toast';
+    el.innerHTML = '<span></span>' + (undoFn ? '<button type="button">Undo</button>' : '');
+    el.querySelector('span').textContent = text;
+    if (undoFn) el.querySelector('button').addEventListener('click', function () { undoFn(); el.remove(); });
+    document.body.appendChild(el);
+    toastTimer = setTimeout(function () { el.remove(); }, 7000);
+  }
+
+  // ---------- render ------------------------------------------------------
+  function rows(items, q, path) {
+    var html = '', shown = 0;
+    var links = items.filter(function (i) { return !i.c; });
+    var subs = items.filter(function (i) { return i.c; });
+    var keep = links.filter(function (l) {
+      if (!q) return true;
+      return (l.t || '').toLowerCase().indexOf(q) !== -1 ||
+             (l.u || '').toLowerCase().indexOf(q) !== -1 ||
+             path.toLowerCase().indexOf(q) !== -1;
+    });
+    if (keep.length) {
+      html += '<ul>';
+      keep.forEach(function (l) {
+        html += '<li><a class="row" href="' + esc(l.u) + '" target="_blank" rel="noopener noreferrer">' +
+                '<span class="t">' + hl(l.t, q) + '</span>' +
+                '<span class="host">' + hl(host(l.u), q) + '</span></a>' + tools(l._id, 'link') + '</li>';
+      });
+      html += '</ul>';
+      shown += keep.length;
+    }
+    subs.forEach(function (s) {
+      var r = rows(s.c, q, path + ' / ' + s.t);
+      if (!r.shown && q) return;
+      html += '<div class="sub-group"><div class="subhead"><h3>' + hl(s.t, q) + '</h3>' +
+              '<span class="n">' + r.shown + '</span>' + tools(s._id, 'folder') + '</div>' + r.html + '</div>';
+      shown += r.shown;
+    });
+    return { html: html, shown: shown };
+  }
+
+  function render(q) {
+    if (!state) return;
+    q = (q || '').trim().toLowerCase();
+    var html = '', count = 0;
+    var pinned = state.tree.filter(function (n) { return !n.c; });
+    var tops = state.tree.filter(function (n) { return n.c; });
+
+    var pin = pinned.filter(function (l) {
+      if (!q) return true;
+      return (l.t || '').toLowerCase().indexOf(q) !== -1 || (l.u || '').toLowerCase().indexOf(q) !== -1;
+    });
+    if (pin.length) {
+      html += '<section><div class="fhead"><h2>Pinned to the bar</h2><span class="n">' + pin.length + '</span>' +
+              '<span class="tools"><button class="tool" data-act="addin" data-id="root">+ link</button></span></div>' +
+              '<div class="body"><div class="pinned">';
+      pin.forEach(function (l) {
+        html += '<span class="chipwrap"><a class="chip" href="' + esc(l.u) + '" target="_blank" rel="noopener noreferrer">' +
+                hl(l.t, q) + '</a><button class="x" data-act="del" data-id="' + l._id + '" title="Delete">&times;</button></span>';
+      });
+      html += '</div></div></section>';
+      count += pin.length;
+    }
+    tops.forEach(function (f) {
+      var r = rows(f.c, q, f.t);
+      if (!r.shown && q) return;
+      html += '<section data-id="' + f._id + '"><div class="fhead">' +
+              '<h2 data-act="fold">' + hl(f.t, q) + '</h2>' +
+              '<span class="n">' + r.shown + ' of ' + countLinks(f.c) + '</span>' +
+              tools(f._id, 'folder') + '</div><div class="body">' + r.html + '</div></section>';
+      count += r.shown;
+    });
+    out.innerHTML = html || '<p class="empty">Nothing matches that.</p>';
+    document.getElementById('total').textContent = total();
+    document.getElementById('folders').textContent = tops.length;
+    document.getElementById('count').textContent = q ? count + ' / ' + total() : total() + ' links';
+  }
+
+  // ---------- dialog ------------------------------------------------------
+  function ask(title, fields, okLabel) {
+    return new Promise(function (resolve) {
+      document.getElementById('dlg-title').textContent = title;
+      document.getElementById('dlg-ok').textContent = okLabel || 'Save';
+      var box = document.getElementById('dlg-fields');
+      box.innerHTML = '';
+      box.style.display = fields.length ? 'flex' : 'none';
+      box.style.flexDirection = 'column';
+      box.style.gap = '13px';
+      fields.forEach(function (f) {
+        if (f.type === 'msg') {
+          var p = document.createElement('p');
+          p.className = 'msg'; p.innerHTML = f.html; box.appendChild(p); return;
+        }
+        var lab = document.createElement('label');
+        lab.textContent = f.label;
+        var input;
+        if (f.type === 'select') {
+          input = document.createElement('select');
+          f.options.forEach(function (o) {
+            var opt = document.createElement('option');
+            opt.value = o.id; opt.textContent = o.label;
+            if (o.id === f.value) opt.selected = true;
+            input.appendChild(opt);
+          });
+        } else {
+          input = document.createElement('input');
+          input.type = f.type || 'text';
+          input.value = f.value == null ? '' : f.value;
+          if (f.placeholder) input.placeholder = f.placeholder;
+        }
+        input.id = 'f-' + f.name; input.name = f.name;
+        lab.appendChild(input); box.appendChild(lab);
+      });
+      function done() {
+        dlg.removeEventListener('close', done);
+        var v = null;
+        if (dlg.returnValue === 'ok') {
+          v = {};
+          fields.forEach(function (f) {
+            if (f.type === 'msg') return;
+            var el = document.getElementById('f-' + f.name);
+            if (el) v[f.name] = el.value;
+          });
+        }
+        box.innerHTML = '';
+        resolve(v);
+      }
+      dlg.addEventListener('close', done);
+      dlg.showModal();
+      var first = box.querySelector('input, select');
+      if (first) { first.focus(); if (first.select) first.select(); }
+    });
+  }
+
+  // ---------- actions -----------------------------------------------------
+  function normalizeUrl(u) {
+    u = (u || '').trim();
+    if (!u) return '';
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+    return u;
+  }
+  async function addLink(parentId) {
+    var v = await ask('Add a link', [
+      { name: 'title', label: 'Title', value: '' },
+      { name: 'url', label: 'Address', value: '', placeholder: 'example.com/page' },
+      { name: 'parent', label: 'Folder', type: 'select', options: folders(), value: parentId || 'root' }
+    ], 'Add');
+    if (!v) return;
+    var url = normalizeUrl(v.url);
+    if (!url) { toast('No address given, nothing added.'); return; }
+    var node = { t: (v.title || '').trim() || host(url), u: url, d: Math.floor(Date.now() / 1000), _id: 'n' + (++seq) };
+    listOf(v.parent).push(node);
+    touch(); render(document.getElementById('q').value);
+    toast('Added "' + node.t + '".');
+  }
+  async function addFolder() {
+    var v = await ask('Add a folder', [
+      { name: 'name', label: 'Name', value: '' },
+      { name: 'parent', label: 'Inside', type: 'select', options: folders(), value: 'root' }
+    ], 'Add');
+    if (!v || !(v.name || '').trim()) return;
+    listOf(v.parent).push({ t: v.name.trim(), c: [], _id: 'n' + (++seq) });
+    touch(); render(document.getElementById('q').value);
+    toast('Folder "' + v.name.trim() + '" added.');
+  }
+  async function edit(id) {
+    var hit = byId(id); if (!hit) return;
+    var n = hit.node, curParent = hit.parent ? hit.parent._id : 'root';
+    var fields = n.c
+      ? [{ name: 'title', label: 'Folder name', value: n.t },
+         { name: 'parent', label: 'Inside', type: 'select', options: folders(null, 0, null, id), value: curParent }]
+      : [{ name: 'title', label: 'Title', value: n.t },
+         { name: 'url', label: 'Address', value: n.u },
+         { name: 'parent', label: 'Folder', type: 'select', options: folders(), value: curParent }];
+    var v = await ask(n.c ? 'Edit folder' : 'Edit link', fields);
+    if (!v) return;
+    n.t = (v.title || '').trim() || n.t;
+    if (!n.c) n.u = normalizeUrl(v.url) || n.u;
+    if (v.parent !== curParent) { hit.list.splice(hit.index, 1); listOf(v.parent).push(n); }
+    touch(); render(document.getElementById('q').value);
+    toast('Edited. Save writes it to the file.');
+  }
+  async function del(id) {
+    var hit = byId(id); if (!hit) return;
+    var n = hit.node;
+    if (n.c) {
+      var inside = countLinks(n.c);
+      var ok = await ask('Delete folder', [{
+        type: 'msg',
+        html: 'Delete <b>' + esc(n.t) + '</b>' +
+              (inside ? ' and the <b>' + inside + '</b> link' + (inside === 1 ? '' : 's') + ' inside it' : '') +
+              '? You can undo this straight afterwards.'
+      }], 'Delete');
+      if (!ok) return;
+    }
+    var list = hit.list, index = hit.index;
+    list.splice(index, 1);
+    touch(); render(document.getElementById('q').value);
+    toast('Deleted "' + n.t + '".', function () {
+      list.splice(index, 0, n);
+      touch(); render(document.getElementById('q').value);
+      toast('Restored "' + n.t + '".');
+    });
+  }
+
+  // ---------- the write target --------------------------------------------
+  // Reading needed no permission, so nothing has been asked for yet. This runs
+  // from the Save click, which is the activation the picker and the permission
+  // prompt both require.
+  async function writeTarget() {
+    if (handle) return handle;
+    if (!HAS_FSA) return null;
+    var h = await recall();
+    // A handle for some other file is worse than none: it would put the edits
+    // somewhere this page never reads them back from, and they would look lost.
+    if (h && h.name !== DATA_FILE) { forget(); h = null; }
+    if (h && (await allow(h, 'readwrite'))) { handle = h; footerNote(); return h; }
+    if (h) forget();                           // remembered but refused or stale
+    toast('Point at ' + DATA_FILE + ' once — after that, Save just writes.');
+    try {
+      // `id` makes Chrome reopen this picker in the folder it was last used in,
+      // so the file is already under the cursor the next time it is ever needed.
+      var picked = await window.showOpenFilePicker({
+        types: PICKER_TYPES, multiple: false, id: 'bookmark-data', startIn: 'desktop'
+      });
+      var p = picked[0];
+      if (p.name !== DATA_FILE) {
+        var ok = await ask('That is not the file this page reads', [{
+          type: 'msg',
+          html: 'This page loads <b>' + esc(DATA_FILE) + '</b>. Saving into <b>' + esc(p.name) +
+                '</b> would leave your changes somewhere it never looks, and they would be ' +
+                'gone when you reopen it.'
+        }], 'Save there anyway');
+        if (!ok) { toast('Nothing saved. Choose ' + DATA_FILE + ' to keep your changes.'); return null; }
+      }
+      if (!(await allow(p, 'readwrite'))) { toast('Permission to write was declined.'); return null; }
+      handle = p; fileName = p.name;
+      remember(p);
+      document.getElementById('file-name').textContent = fileName;
+      footerNote();
+      return handle;
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Could not open that file: ' + e.message);
+      return null;
+    }
+  }
+
+  function download(name, text) {
+    var blob = new Blob([text], { type: 'text/javascript;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  async function saveFile() {
+    if (!state) return;
+    var target = await writeTarget();
+    var stamp = new Date().toLocaleString();
+    var was = state.generated;
+    state.generated = stamp;
+    var text = serialize();
+
+    if (!target) {
+      state.generated = was;
+      if (HAS_FSA) return;                     // writeTarget already explained itself
+      download(fileName || DATA_FILE, text);
+      toast('Downloaded ' + (fileName || DATA_FILE) + ' — put it back over the data file.');
+      return;
+    }
+    try {
+      var w = await target.createWritable();
+      await w.write(text);
+      await w.close();
+    } catch (e) {
+      state.generated = was;
+      await ask('Could not write the file', [{
+        type: 'msg',
+        html: 'Nothing was saved. <b>' + esc(fileName) + '</b> reported: ' + esc(e.name + ': ' + e.message) +
+              '<br><br>If the file was moved or renamed, use <b>Open…</b> to point at it again.'
+      }], 'OK');
+      return;
+    }
+    settle(stamp);
+    toast('Saved to ' + fileName + '.');
+  }
+
+  async function openOther() {
+    if (!HAS_FSA) { document.getElementById('plain-file').click(); return; }
+    if (dirty) {
+      var ok = await ask('Open another file', [{
+        type: 'msg', html: 'This page has edits that are <b>not saved</b>. Opening another file throws them away.'
+      }], 'Discard and open');
+      if (!ok) return;
+    }
+    try {
+      var picked = await window.showOpenFilePicker({ types: PICKER_TYPES, multiple: false });
+      var h = picked[0];
+      var data = parseText(await (await h.getFile()).text());   // throws before anything is replaced
+      await allow(h, 'readwrite');
+      handle = h; fileName = h.name;
+      remember(h);
+      adopt(data);
+      toast('Opened ' + fileName + '.');
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Could not open that file: ' + e.message);
+    }
+  }
+
+  async function revert() {
+    var ok = await ask('Revert everything', [{
+      type: 'msg',
+      html: 'Throw away every change made here and go back to <b>' + esc(fileName) + '</b> as it was read? This cannot be undone.'
+    }], 'Revert');
+    if (!ok) return;
+    try {
+      // Prefer the file on disk; fall back to the copy taken when it loaded.
+      var data = handle ? parseText(await (await handle.getFile()).text())
+                        : normalize(JSON.parse(pristine));
+      adopt(data);
+      toast('Reverted.');
+    } catch (e) { toast('Could not re-read the file: ' + e.message); }
+  }
+
+  function footerNote() {
+    document.getElementById('foot-file').innerHTML = handle
+      ? 'Reading and writing <b>' + esc(fileName) + '</b> directly. This page holds no data of its own, ' +
+        'so the two can be copied, edited or backed up apart.'
+      : 'Loaded <b>' + esc(fileName) + '</b> from beside this page. The first <b>Save</b> asks for it once more, ' +
+        'to get permission to write; after that it saves straight to disk.';
+  }
+
+  // ---------- startup -----------------------------------------------------
+  function adopt(data) {
+    state = data; seq = 0; decorate(state.tree);
+    document.getElementById('file-name').textContent = fileName;
+    settle(state.generated);
+    footerNote();
+    render(document.getElementById('q').value);
+  }
+
+  function noData(why) {
+    ['q', 'add-link', 'add-folder', 'toggle-all', 'save', 'revert'].forEach(function (id) {
+      document.getElementById(id).disabled = true;
+    });
+    document.getElementById('file-name').textContent = 'no data file';
+    document.getElementById('when').textContent = 'never';
+    document.getElementById('foot-file').textContent = '';
+    out.innerHTML = '<div class="notice"><h2>' + esc(DATA_FILE) + ' did not load</h2>' +
+      '<p>' + esc(why) + '</p>' +
+      '<p>It should sit in the same folder as this page. If it lives somewhere else, ' +
+      'point at it with <b>Open…</b> in the toolbar.</p>' +
+      '<p><code>window.BOOKMARKS = { "generated": "…", "tree": [ … ] };</code></p></div>';
+  }
+
+  out = document.getElementById('out');
+  dlg = document.getElementById('dlg');
+
+  out.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'fold') { var sec = b.closest('section'); if (sec) sec.classList.toggle('closed'); return; }
+    e.preventDefault();
+    if (act === 'edit') edit(b.getAttribute('data-id'));
+    else if (act === 'del') del(b.getAttribute('data-id'));
+    else if (act === 'addin') addLink(b.getAttribute('data-id'));
+  });
+
+  var q = document.getElementById('q'), timer;
+  q.addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () { render(q.value); }, 90);
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); saveFile(); return; }
+    if (dlg.open) return;
+    if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); q.select(); }
+    if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; render(''); }
+  });
+
+  var all = document.getElementById('toggle-all');
+  all.addEventListener('click', function () {
+    var closing = all.textContent.indexOf('Collapse') === 0;
+    out.querySelectorAll('section').forEach(function (s) { s.classList.toggle('closed', closing); });
+    all.textContent = closing ? 'Expand all' : 'Collapse all';
+  });
+
+  document.getElementById('add-link').addEventListener('click', function () { addLink('root'); });
+  document.getElementById('add-folder').addEventListener('click', addFolder);
+  document.getElementById('save').addEventListener('click', saveFile);
+  document.getElementById('open-other').addEventListener('click', openOther);
+  document.getElementById('revert').addEventListener('click', revert);
+  document.getElementById('theme').addEventListener('click', function () {
+    var r = document.documentElement;
+    var isDark = r.getAttribute('data-theme') === 'dark' ||
+      (!r.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+    r.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    try { localStorage.setItem('bm-theme', isDark ? 'light' : 'dark'); } catch (e) {}
+  });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (!dirty) return;
+    e.preventDefault(); e.returnValue = '';
+  });
+
+  // The fallback reader, for a browser with no File System Access API.
+  var plainInput = document.getElementById('plain-file');
+  plainInput.addEventListener('change', async function () {
+    var f = plainInput.files && plainInput.files[0];
+    if (!f) return;
+    try {
+      var data = parseText(await f.text());
+      handle = null; fileName = f.name;
+      ['q', 'add-link', 'add-folder', 'toggle-all', 'save', 'revert'].forEach(function (id) {
+        document.getElementById(id).disabled = false;
+      });
+      pristine = JSON.stringify(data);
+      adopt(data);
+      toast('Loaded ' + fileName + '. Saving will download a copy.');
+    } catch (e) { toast('That file could not be read: ' + e.message); }
+    plainInput.value = '';
+  });
+
+  try {
+    var savedTheme = localStorage.getItem('bm-theme');
+    if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+  } catch (e) {}
+
+  if (window.BOOKMARKS) {
+    try {
+      pristine = JSON.stringify(window.BOOKMARKS);
+      adopt(normalize(JSON.parse(pristine)));   // work on a copy, leave the global alone
+    } catch (e) { noData(e.message); }
+  } else {
+    noData('The script tag loaded nothing, so the file is missing, renamed, or does not set window.BOOKMARKS.');
+  }
+
+  // If the write permission is still live from an earlier session, pick it up
+  // quietly. queryPermission needs no click, so this can run on load.
+  (async function () {
+    if (handle || !HAS_FSA) return;
+    var h = await Promise.race([recall(), wait(1500, null)]);
+    if (h && h.name === DATA_FILE && (await granted(h, 'readwrite'))) {
+      handle = h; fileName = h.name;
+      document.getElementById('file-name').textContent = fileName;
+      footerNote();
+    }
+  })();
+})();
+</script>
+</body>
+</html>
